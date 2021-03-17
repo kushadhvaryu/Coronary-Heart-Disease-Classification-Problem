@@ -1,5 +1,5 @@
 # Coronary-Heart-Disease-Classification-Problem
-Colloborator: Parth Modhia
+Collaborator: Parth Modhia
 
 ## Executive Summary:
 Cardiovascular disease is one of the most significant reasons for the number of deaths among all people around the world. The early forecast of cardiovascular ailments can help in compelling high-risk patients to change their risky habits and follow a healthy routine such that any unfavorable events can be prevented.
