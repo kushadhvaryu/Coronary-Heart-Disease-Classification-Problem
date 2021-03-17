@@ -1,0 +1,603 @@
+---
+title: "Project"
+author: "Kush Adhvaryu, Parth Modhia"
+date: "3/24/2020"
+output: pdf_document
+---
+
+```{r}
+
+library(stats)
+
+heart <- read.csv("D:/Data Mining/Data Mining - Group 11/Project/framingham.csv", na.strings = "", stringsAsFactors = FALSE)
+
+dim(heart)
+
+str(heart)
+
+heart[heart == "NA"]  <- NA
+heart_update <- na.omit(heart)
+i <- c(3,5,6,10,13,14,15)                                  # Specify columns you want to change
+#We can now use the apply function to change columns 2, 3, 5, 6, 10, 13, 14, and 15 to numeric:
+
+heart_update[ , i] <- apply(heart_update[ , i], 2,            # Specify own function within apply
+                    function(x) as.numeric(as.character(x)))
+#Let’s check the classes of the variables of our data frame:
+
+sapply(heart_update, class)                           # Get classes of all columns
+
+names(heart_update)[1] <- "Sex_Male"
+
+summary(heart_update)
+
+```
+
+```{r fig.width=8, fig.height=8, fig.align='center'}
+
+library(plyr)
+library(psych)
+
+multi.hist(heart_update[,sapply(heart_update, is.numeric)])
+
+```
+
+```{r}
+
+library(ggplot2)
+library(ggpubr)
+
+theme_set(theme_pubr())
+ggplot(heart_update, aes(TenYearCHD)) +
+  geom_bar(fill = "#0073C2FF") +
+  theme_pubclean()
+
+```
+
+```{r fig.width=15, fig.height=20, fig.align='center'}
+
+library(psych)
+
+pairs.panels(heart_update, 
+             method = "pearson", # correlation method
+             hist.col = "#00AFBB",
+             density = TRUE,  # show density plots
+             ellipses = TRUE # show correlation ellipses
+             )
+
+```
+
+```{r}
+#PCA
+set.seed(112)
+index = sample( 1:nrow(heart_update), nrow(heart_update) * 0.6, replace = FALSE ) 
+
+trainset = heart_update[index, ]
+test = heart_update[-index, ]
+testset = test[, 1:15]
+
+pca_trainset = trainset[, 1:15]
+pca_testset = testset
+pca = prcomp( pca_trainset, scale = T )
+
+# variance
+pr_var = ( pca$sdev )^2 
+
+# % of variance
+prop_varex = pr_var / sum( pr_var )
+
+# Plot
+plot( prop_varex, xlab = "Principal Component", 
+                  ylab = "Proportion of Variance Explained", type = "b" )
+
+#Scree Plot
+plot(cumsum( prop_varex ), xlab = "Principal Component", 
+                            ylab = "Cumulative Proportion of Variance Explained", type = "b" )
+
+# Creating a new dataset
+train = data.frame(TenYearCHD = trainset$TenYearCHD, pca$x )
+t = as.data.frame(predict(pca, newdata = pca_testset))
+
+new_trainset = train[, 1:9]
+new_testset =  t[, 1:8]
+
+# Build the neural network (NN)
+library( neuralnet )
+n = names( new_trainset )
+f = as.formula( paste( "TenYearCHD ~", paste( n[!n %in% "TenYearCHD" ], collapse = "+" ) ) )
+nn = neuralnet(f, new_trainset, hidden = 4, linear.output = FALSE, threshold=0.01 )
+
+# Plot the NN
+plot(nn, rep = "best" )
+
+# Test the resulting output
+nn.results = compute(nn, new_testset)
+
+# Results
+results = data.frame( actual = test$TenYearCHD, 
+                      prediction = round(nn.results$net.result))
+
+# Confusion Matrix
+library(caret)
+t = table(results) 
+print(confusionMatrix(t))
+
+Predict=compute(nn,new_testset)
+prob.result <- Predict$net.result
+
+prob <- Predict$net.result
+#pred <- ifelse(prob>0.5, 1, 0)
+#pred
+#nn.pred = prediction(prob.result, new_testset$)
+#pref <- performance(nn.pred, "tpr", "fpr")
+#plot(pref)
+#pref <- performance(nn.pred, "tpr", "fpr")
+#lot(pref)
+
+
+```
+
+```{r}
+
+# Model 1: Knn
+
+set.seed(743)
+train.index <- sample(row.names(heart_update), 0.6 * dim(heart_update))
+valid.index <- setdiff(row.names(heart_update), train.index)
+train.df <- heart_update[train.index, ]
+valid.df <- heart_update[valid.index, ]
+
+# new patient
+
+new.df <- data.frame(Sex_Male = 1, age = 52, education = 2, currentSmoker = 1, cigsPerDay = 20, BPMeds = 1, prevalentStroke = 1, prevalentHyp = 1, diabetes = 1, totChol = 200, sysBP = 145, diaBP = 100, BMI = 28, heartRate = 80, glucose = 70)
+
+# initialize normalized training, validation data, complete data frames to originals
+
+train.norm.df <- train.df
+valid.norm.df <- valid.df
+heart.norm.df <- heart_update
+
+# use preProcess() from the caret package to normalize variables.
+
+library(caret)
+
+norm.values <- preProcess(train.df[, 1:15], method=c("center", "scale"))
+train.norm.df[, 1:15] <- predict(norm.values, train.df[, 1:15])
+valid.norm.df[, 1:15] <- predict(norm.values, valid.df[, 1:15])
+heart.norm.df[, 1:15] <- predict(norm.values, heart_update[, 1:15])
+new.norm.df <- predict(norm.values, new.df)
+
+# use knn() to compute knn.
+# knn() is available in library FNN (provides a list of the nearest neighbors)
+# and library class (allows a numerical output variable).
+
+library(FNN)
+nn <- knn(train = train.norm.df[, 1:15], test = new.norm.df, cl = train.norm.df[, 16], k = 3)
+row.names(train.df)[attr(nn, "nn.index")]
+nn
+
+```
+
+```{r}
+
+library(caret)
+# initialize a data frame with two columns: k, and accuracy.
+
+accuracy.df <- data.frame(k = seq(1, 45, 1), accuracy = rep(0, 45))
+
+# compute knn for different k on validation.
+
+valid.norm.df$TenYearCHD <- as.factor(valid.norm.df$TenYearCHD)
+
+for(i in 1:45) { 
+  knn.pred <- knn(train.norm.df[, 1:15], valid.norm.df[, 1:15], 
+                  cl = train.norm.df[, 16], k = i)
+accuracy.df[i, 2] <- confusionMatrix(knn.pred, valid.norm.df[, 16])$overall[1]
+}
+
+accuracy.df
+
+```
+
+```{r}
+
+knn.pred.new <- knn(heart.norm.df[, 1:15], new.norm.df,
+cl = heart.norm.df[, 16], k = 43)
+row.names(train.df)[attr(nn, "nn.index")]
+
+knn.pred.new
+
+```
+```{r}
+
+xtab = table(knn.pred, valid.norm.df[, 16])
+print(xtab)
+
+accuracy = sum(knn.pred == valid.norm.df[, 16])/length(valid.norm.df[, 16])
+precision = xtab[1,1]/sum(xtab[,1])
+recall = xtab[1,1]/sum(xtab[1,])
+f = 2 * (precision * recall) / (precision + recall)
+cat(paste("Accuracy:\t", format(accuracy, digits = 3), "\n",sep=" "))
+cat(paste("Precision:\t", format(precision, digits = 3), "\n",sep=" "))
+cat(paste("Recall:\t\t", format(recall, digits = 3), "\n",sep=" "))
+cat(paste("F-measure:\t", format(f, digits = 3), "\n",sep=" "))
+
+```
+```{r}
+
+library(ISLR)
+library(caret)
+
+set.seed(300)
+#Spliting data as training and test set. Using createDataPartition() function from caret
+indxTrain <- createDataPartition(y = heart_update$TenYearCHD, p = 0.75,list = FALSE)
+training <- heart_update[indxTrain,]
+testing <- heart_update[-indxTrain,]
+
+#Checking distibution in origanl data and partitioned data
+prop.table(table(training$TenYearCHD)) * 100
+
+prop.table(table(testing$TenYearCHD)) * 100
+
+prop.table(table(heart_update$TenYearCHD)) * 100
+
+trainX <- training[,names(training) != "TenYearCHD"]
+preProcValues <- preProcess(x = trainX,method = c("center", "scale"))
+preProcValues
+
+set.seed(400)
+ctrl <- trainControl(method="repeatedcv",repeats = 3) #,classProbs=TRUE,summaryFunction = twoClassSummary)
+knnFit <- train(TenYearCHD ~ ., data = training, method = "knn", trControl = ctrl, preProcess = c("center","scale"), tuneLength = 20)
+
+#Output of kNN fit
+knnFit
+
+#Plotting yields Number of Neighbours Vs accuracy (based on repeated cross validation)
+plot(knnFit)
+
+knnPredict <- predict(knnFit,newdata = testing )
+#Get the confusion matrix to see accuracy value and other parameter values
+#confusionMatrix(knnPredict, testing$TenYearCHD )
+
+mean(knnPredict == testing$TenYearCHD)
+
+#Now verifying 2 class summary function
+
+ctrl <- trainControl(method="repeatedcv",repeats = 3,classProbs=TRUE,summaryFunction = twoClassSummary)
+#knnFit <- train(TenYearCHD ~ ., data = training, method = "knn", trControl = ctrl, preProcess = c("center","scale"), tuneLength = 20)
+
+#Output of kNN fit
+knnFit
+
+#Plotting yields Number of Neighbours Vs accuracy (based on repeated cross validation)
+plot(knnFit, print.thres = 0.5, type="S")
+
+knnPredict <- predict(knnFit,newdata = testing )
+#Get the confusion matrix to see accuracy value and other parameter values
+#confusionMatrix(knnPredict, testing$TenYearCHD )
+
+mean(knnPredict == testing$TenYearCHD)
+
+library(pROC)
+#knnPredict <- predict(knnFit, newdata = testing , type="prob")
+#knnROC <- roc(testing$TenYearCHD,knnPredict[,"1"], levels = rev(testing$TenYearCHD))
+#knnROC
+
+#plot(knnROC, type="S", print.thres= 0.5)
+
+```
+
+```{r}
+
+library(e1071)
+
+train.index <- sample(c(1:dim(heart_update)[1]), dim(heart_update)[1]*0.6)
+train.df <- heart_update[train.index, ]
+valid.df <- heart_update[-train.index, ]
+
+# run naive bayes
+
+train.df$age <- as.factor(train.df$age)
+train.df$education <- as.factor(train.df$education)
+train.df$cigsPerDay <- as.factor(train.df$cigsPerDay)
+train.df$totChol <- as.factor(train.df$totChol)
+train.df$sysBP <- as.factor(train.df$sysBP)
+train.df$diaBP <- as.factor(train.df$diaBP)
+train.df$heartRate <- as.factor(train.df$heartRate)
+train.df$glucose <- as.factor(train.df$glucose)
+
+disease.nb <- naiveBayes(TenYearCHD ~ ., data = train.df)
+disease.nb
+
+```
+
+```{r}
+
+library(rpart)
+library(rpart.plot)
+
+# partition
+set.seed(1)
+train.index <- sample(c(1:dim(heart_update)[1]), dim(heart_update)[1]*0.6)
+train.df <- heart_update[train.index, ]
+valid.df <- heart_update[-train.index, ]
+
+# classification tree
+default.ct <- rpart(TenYearCHD ~ ., data = train.df, method = "class")
+
+# plot tree
+prp(default.ct, type = 1, extra = 1, under = TRUE, split.font = 1, varlen = -10)
+
+```
+
+```{r}
+
+# set argument type = "class" in predict() to generate predicted class membership.
+default.ct.point.pred.train <- predict(default.ct, train.df, type = "class")
+# generate confusion matrix for training data
+train.df$TenYearCHD <- as.factor(train.df$TenYearCHD)
+confusionMatrix(default.ct.point.pred.train, train.df$TenYearCHD)
+# repeat the code for the validation set
+valid.df$TenYearCHD <- as.factor(valid.df$TenYearCHD)
+default.ct.point.pred.valid <- predict(default.ct, valid.df, type = "class")
+confusionMatrix(default.ct.point.pred.valid, valid.df$TenYearCHD)
+
+```
+
+```{r}
+
+# argument xval refers to the number of folds to use in rpart's built-in
+# cross-validation procedure
+
+# argument cp sets the smallest value for the complexity parameter.
+cv.ct <- rpart(TenYearCHD ~ ., data = train.df, method = "class", cp = 0.00001, minsplit = 5, xval = 5)
+
+# use printcp() to print the table.
+printcp(cv.ct)
+
+```
+
+```{r}
+
+library(randomForest)
+
+## random forest
+rf <- randomForest(TenYearCHD ~ ., data = train.df, ntree = 500, mtry = 4, nodesize = 5, importance = TRUE)
+
+## variable importance plot
+varImpPlot(rf, type = 1)
+
+## confusion matrix
+rf.pred <- predict(rf, valid.df)
+confusionMatrix(rf.pred, valid.df$TenYearCHD)
+
+```
+```{r}
+
+# You only need to install packages once per machine
+# (plus maybe after upgrading R), but otherwise they persist across R sessions.
+ 
+# Load the kyphosis data set.
+require(rpart)
+ 
+# Split randomly
+x <- heart_update[sample(1:nrow(heart_update), nrow(heart_update), replace = F),]
+x.train <- heart_update[1:floor(nrow(x)*.75), ]
+x.evaluate <- heart_update[(floor(nrow(x)*.75)+1):nrow(x), ]
+ 
+# Create a model using "random forest and bagging ensemble algorithms
+# utilizing conditional inference trees."
+require(party)
+x.model <- cforest(as.factor(TenYearCHD) ~ ., data = x.train, control = cforest_unbiased(mtry = 3))
+ 
+# Alternatively, use "recursive partitioning [...] in a conditional
+# inference framework."
+# x.model <- ctree(Kyphosis ~ Age + Number + Start, data=x.train)
+ 
+# ctree plots nicely (but cforest doesn"t plot)
+# plot (x.model)
+ 
+# Use the model to predict the evaluation.
+x.evaluate$prediction <- predict(x.model, newdata=x.evaluate)
+ 
+# Calculate the overall accuracy.
+x.evaluate$correct <- x.evaluate$prediction == x.evaluate$TenYearCHD
+print(paste("% of predicted classifications correct", mean(x.evaluate$correct) * 100))
+ 
+# Extract the class probabilities.
+x.evaluate$probabilities <- 1- unlist(treeresponse(x.model, newdata=x.evaluate), use.names=F)[seq(1,nrow(x.evaluate)*2,2)]
+ 
+# Plot the performance of the model applied to the evaluation set as
+# an ROC curve.
+require(ROCR)
+pred <- prediction(x.evaluate$probabilities, x.evaluate$TenYearCHD)
+perf <- performance(pred,"tpr","fpr")
+plot(perf, main="ROC curve", colorize=T)
+ 
+# And then a lift chart
+perf <- performance(pred,"lift","rpp")
+plot(perf, main="lift curve", colorize=T)
+
+```
+
+```{r}
+
+# partition data
+set.seed(2)
+train.index <- sample(c(1:dim(heart_update)[1]), dim(heart_update)[1]*0.6)
+train.df <- heart_update[train.index, ]
+valid.df <- heart_update[-train.index, ]
+# run logistic regression
+# use glm() (general linear model) with family = "binomial" to fit a logistic
+# regression.
+logit.reg <- glm(as.factor(TenYearCHD) ~ ., data = train.df, family = "binomial")
+options(scipen=999)
+summary(logit.reg)
+
+predictTrain = predict(logit.reg, type = "response")
+
+summary(predictTrain)
+tapply(predictTrain, train.df$TenYearCHD, mean)
+
+table(train.df$TenYearCHD, predictTrain > 0.5)
+
+Sensitivity <- 34/335
+#Sensitivity = 0.1014925
+
+Specificity <- 1840/ 1859
+#Specificity = 0.9897795
+
+```
+```{r}
+
+# use predict() with type = "response" to compute predicted probabilities.
+logit.reg.pred <- predict(logit.reg, valid.df, type = "response")
+# first 5 actual and predicted records
+data.frame(actual = valid.df$TenYearCHD[1:5], predicted = logit.reg.pred[1:5])
+
+```
+
+```{r}
+
+library(gains)
+gain <- gains(valid.df$TenYearCHD, logit.reg.pred, groups = length(logit.reg.pred))
+# plot lift chart
+plot(c(0, gain$cume.pct.of.total * sum(valid.df$TenYearCHD)) ~ c(0, gain$cume.obs), xlab = "# patients", ylab = "Cumulative", main = "", type = "l")
+lines(c(0, sum(valid.df$TenYearCHD)) ~ c(0, dim(valid.df)[1]), lty = 2)
+
+```
+
+```{r}
+
+library(neuralnet)
+library(nnet)
+library(caret)
+# selected variables
+#vars=c("ALCHL_I", "PROFIL_I_R", "VEH_INVL")
+# partition the data
+set.seed(2)
+train.index <- sample(c(1:dim(heart_update)[1]), dim(heart_update)[1]*0.6)
+train.df <- heart_update[train.index, ]
+valid.df <- heart_update[-train.index, ]
+valid.index=setdiff(row.names(heart_update), train.index)
+# when y has multiple classes - need to dummify
+#trainData <- heart_update[training, ]
+#class.ind(accidents.df[training,]$SUR_COND),
+#class.ind(accidents.df[training,]$MAX_SEV_IR))
+#names(trainData)=c(vars,
+#paste("SUR_COND_", c(1, 2, 3, 4, 9), sep=""), paste("MAX_SEV_IR_", c(0, 1, 2), sep=""))
+#validData <- cbind(accidents.df[validation,c(vars)],
+#class.ind(accidents.df[validation,]$SUR_COND),
+#class.ind(accidents.df[validation,]$MAX_SEV_IR))
+#names(validData)=c(vars,
+#paste("SUR_COND_", c(1, 2, 3, 4, 9), sep=""), paste("MAX_SEV_IR_", c(0, 1, 2), sep=""))
+# run nn with 2 hidden nodes
+# use hidden= with a vector of integers specifying number of hidden nodes in each layer
+nn <- neuralnet(TenYearCHD ~ ., data = train.df, hidden = 2)
+training.prediction = compute(nn, train.df)
+training.class = apply(training.prediction$net.result, 1, which.max) - 1
+training.class = as.factor(training.class)
+confusionMatrix(training.class, as.factor(heart_update[train.index,]$TenYearCHD))
+validation.prediction = compute(nn, valid.df)
+validation.class = apply(validation.prediction$net.result,1,which.max) - 1
+validation.class = as.factor(validation.class)
+#confusionMatrix(validation.class, as.factor(heart_update[valid.index,]$TenYearCHD))
+prob = compute(nn, valid.df[, -ncol(valid.df)] )
+prob.result <- prob$net.result
+
+detach(package:neuralnet,unload = T)
+
+library(ROCR)
+nn.pred = prediction(prob.result, valid.df$TenYearCHD)
+pref <- performance(nn.pred, "tpr", "fpr")
+plot(pref)
+
+```
+
+```{r}
+
+library(DiscriMiner)
+
+da.reg <- linDA(heart_update[,1:15], heart_update[,16])
+da.reg$functions
+
+```
+
+```{r}
+
+da.reg <- linDA(heart_update[, 1:15], heart_update[, 16])
+# compute probabilities manually (below); or, use lda() in package MASS with predict()
+propensity.risk <- exp(da.reg$scores[,2])/(exp(da.reg$scores[,1])+exp(da.reg$scores[,2]))
+data.frame(Actual=heart_update$TenYearCHD,
+da.reg$classification, da.reg$scores, propensity.risk=propensity.risk)
+
+confusionMatrix(da.reg$classification, as.factor(heart_update$TenYearCHD))
+
+```
+
+```{r}
+set.seed(2)
+train.index <- sample(c(1:dim(heart_update)[1]), dim(heart_update)[1]*0.6)
+train.df <- heart_update[train.index, ]
+valid.df <- heart_update[-train.index, ]
+
+library(caret)
+library(randomForest)
+library(AUC)
+library(MASS)
+
+model.LDA <- lda(TenYearCHD~., data=train.df, na.action="na.omit")
+model.LDA
+
+pc <- predict(model.LDA, na.roughfix(valid.df))
+summary(pc$class)
+
+xtab <- table(pc$class, valid.df$TenYearCHD)
+caret::confusionMatrix(xtab, positive = "1")
+
+pb <- NULL
+pb <- pc$posterior
+pb <- as.data.frame(pb)
+colnames(pb) <- c("X", "Y")
+pred.LDA <- data.frame(valid.df$TenYearCHD, pb$Y)
+colnames(pred.LDA) <- c("target","score")
+pred.LDA$target <- as.factor(pred.LDA$target)
+lift.LDA <- lift(target ~ score, data = pred.LDA, cuts=10, class="1")
+xyplot(lift.LDA, main="LDA - Lift Chart", type=c("l","g"), lwd=2
+       , scales=list(x=list(alternating=FALSE,tick.number = 10)
+                     ,y=list(alternating=FALSE,tick.number = 10)))
+
+```
+
+```{r}
+
+library(caret)
+
+intrain <- createDataPartition(y = heart_update$TenYearCHD, p= 0.7, list = FALSE)
+training <- heart_update[intrain,]
+testing <- heart_update[-intrain,]
+
+training[["TenYearCHD"]] = factor(training[["TenYearCHD"]])
+
+trctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
+
+svm_Linear <- train(TenYearCHD ~., data = training, method = "svmLinear", trControl=trctrl, preProcess = c("center", "scale"), tuneLength = 10)
+
+svm_Linear
+
+test_pred <- predict(svm_Linear, newdata = testing)
+test_pred
+
+confusionMatrix(table(test_pred, testing$TenYearCHD))
+
+grid <- expand.grid(C = c(0,0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2,5))
+svm_Linear_Grid <- train(TenYearCHD ~., data = training, method = "svmLinear",
+trControl=trctrl, preProcess = c("center", "scale"), tuneGrid = grid, tuneLength = 10)
+svm_Linear_Grid
+plot(svm_Linear_Grid)
+
+test_pred_grid <- predict(svm_Linear_Grid, newdata = testing)
+test_pred_grid
+
+confusionMatrix(table(test_pred_grid, testing$TenYearCHD))
+
+```
